@@ -67,7 +67,7 @@
    "D&A" "0" "D&M" "1"
    "D|A" "0" "D|M" "1"})
 
-;; @i starts at 15
+;; @i starts at 16
 (def predefined-symbols
   (merge
    (apply merge (map #(hash-map (str "R" %) (str %)) (range 0 16)))
@@ -78,8 +78,6 @@
     "ARG" "2"
     "THIS" "3"
     "THAT" "4"}))
-
-;; second pass - add var symbols
 
 ;; first pass - add label symbols
 (defn first-pass
@@ -96,6 +94,22 @@
        (mapv (partial apply hash-map))
        (apply merge)))
 
+(defn second-pass
+  [tokens env]
+  (->> tokens
+       (filterv #(= (first %) :A_INSTRUCTION))
+       ;; filter to variables that don't exist
+       (filterv (fn [v]
+                  (let [value (-> v second second)]
+                    (cond
+                      (re-matches #"\d+" value) false
+                      (get env value) false
+                      :default true))))
+       distinct
+       (mapv #(-> % second second))
+       (map-indexed (fn [idx itm]
+                      {itm (str (+ idx 16))}))
+       (apply merge)))
 ;; https://stackoverflow.com/questions/21448788/printing-the-binary-value-of-a-number-in-clojure
 (defn print-bits
   "Convert integer to string representation in binary, giving two's complement negative numbers"
@@ -159,7 +173,9 @@
         input (slurp filepath)
         tokens (->> input tokenize rest (into []))
         labels-symbols (first-pass tokens)
-        env (merge labels-symbols predefined-symbols)]
+        first-pass-env (merge labels-symbols predefined-symbols)
+        value-symbols (second-pass tokens first-pass-env)
+        env (merge first-pass-env value-symbols)]
     (spit output-filename
           (-> input tokenize
               rest
